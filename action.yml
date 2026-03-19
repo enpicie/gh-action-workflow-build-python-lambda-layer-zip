@@ -22,6 +22,10 @@ inputs:
   aws_role_arn:
     description: 'ARN of AWS IAM role to assume for S3 access'
     required: true
+  architecture:
+    description: 'Lambda architecture to build for (x86_64 or arm64)'
+    required: false
+    default: 'x86_64'
 
 outputs:
   zip_file_name:
@@ -51,12 +55,20 @@ runs:
       shell: bash
       run: |
         runtime_sanitized=$(echo "${{ inputs.python_runtime }}" | tr -d '.')
-        zip_file="${{ inputs.app_name }}-${runtime_sanitized}.zip"
-        s3_prefix="applayers/${{ inputs.app_name }}-${runtime_sanitized}"
+        arch="${{ inputs.architecture }}"
+        if [ "$arch" = "arm64" ]; then
+          docker_platform="linux/arm64"
+        else
+          docker_platform="linux/amd64"
+        fi
+        zip_file="${{ inputs.app_name }}-${runtime_sanitized}-${arch}.zip"
+        s3_prefix="applayers/${{ inputs.app_name }}-${runtime_sanitized}-${arch}"
         s3_key="${s3_prefix}.zip"
         s3_hash_key="${s3_prefix}.hash"
 
         echo "🔹 Python runtime: ${{ inputs.python_runtime }}"
+        echo "🔹 Architecture: $arch"
+        echo "🔹 Docker platform: $docker_platform"
         echo "🔹 Sanitized runtime: $runtime_sanitized"
         echo "🔹 Generated ZIP: $zip_file"
         echo "🔹 S3 prefix: $s3_prefix"
@@ -66,6 +78,7 @@ runs:
         echo "S3_PREFIX=$s3_prefix" >> $GITHUB_ENV
         echo "S3_KEY=$s3_key" >> $GITHUB_ENV
         echo "S3_HASH_KEY=$s3_hash_key" >> $GITHUB_ENV
+        echo "DOCKER_PLATFORM=$docker_platform" >> $GITHUB_ENV
 
         echo "zip_file_name=$zip_file" >> $GITHUB_OUTPUT
         echo "s3_artifact_key=$s3_key" >> $GITHUB_OUTPUT
@@ -78,22 +91,19 @@ runs:
       shell: bash
       run: |
         echo "🔹 Preparing build directory..."
-        rm -rf layer filtered.txt
+        rm -rf layer
         mkdir -p layer/python
-        echo "🔹 Filtering out architecture-dependent dependencies..."
-        grep -v -i "^pynacl" "${{ inputs.requirements_path }}" > filtered.txt
-        echo "🔹 Filtered requirements:"
-        cat filtered.txt
 
     - name: Install dependencies in Docker
       shell: bash
       run: |
-        echo "🔹 Installing dependencies for Python ${{ inputs.python_runtime }}..."
+        echo "🔹 Installing dependencies for Python ${{ inputs.python_runtime }} on $DOCKER_PLATFORM..."
         docker run --rm \
+          --platform "$DOCKER_PLATFORM" \
           -v "$PWD":/app -w /app \
           --user $(id -u):$(id -g) \
           python:${{ inputs.python_runtime }}-slim \
-          bash -c "pip install -r filtered.txt -t layer/python && echo '✅ pip install completed successfully'"
+          bash -c "pip install -r ${{ inputs.requirements_path }} -t layer/python && echo '✅ pip install completed successfully'"
         echo "🔹 Installed dependencies:"
         ls -1 layer/python | head -20 || echo "⚠️ No packages found in layer/python"
 
