@@ -122,6 +122,12 @@ runs:
         rm -rf layer
         mkdir -p layer/python
 
+    - name: Set up QEMU for cross-architecture builds
+      if: env.REQUIREMENTS_CHANGED == 'true' && inputs.architecture == 'arm64'
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
     - name: Install dependencies in Docker
       if: env.REQUIREMENTS_CHANGED == 'true'
       shell: bash
