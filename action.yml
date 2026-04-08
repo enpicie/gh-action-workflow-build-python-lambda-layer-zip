@@ -137,8 +137,9 @@ runs:
           --platform "$DOCKER_PLATFORM" \
           -v "$PWD":/app -w /app \
           --user $(id -u):$(id -g) \
+          --entrypoint bash \
           public.ecr.aws/lambda/python:${{ inputs.python_runtime }}-${{ inputs.architecture }} \
-          bash -c "pip install -r ${{ inputs.requirements_path }} -t layer/python && echo '✅ pip install completed successfully'"
+          -c "pip install -r ${{ inputs.requirements_path }} -t layer/python && echo '✅ pip install completed successfully'"
         echo "🔹 Installed dependencies:"
         ls -1 layer/python | head -20 || echo "⚠️ No packages found in layer/python"
 
